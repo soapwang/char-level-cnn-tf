@@ -8,8 +8,9 @@ class CharCNN(object):
     A CNN for text classification.
     based on the Character-level Convolutional Networks for Text Classification paper.
     """
+    #for chinese spam data, num_quantized_chars=60
     def __init__(self, num_classes=2, filter_sizes=(7, 7, 3, 3, 3, 3), num_filters_per_size=256,
-                 l2_reg_lambda=0.0, sequence_max_length=1014, num_quantized_chars=70):
+                 l2_reg_lambda=0.0, sequence_max_length=1014, num_quantized_chars=60):
 
         # Placeholders for input, output and dropout
         self.input_x = tf.placeholder(tf.float32, [None, num_quantized_chars, sequence_max_length, 1], name="input_x")
@@ -130,13 +131,15 @@ class CharCNN(object):
 
             scores = tf.nn.xw_plus_b(fc_2_output, W, b, name="output")
             predictions = tf.argmax(scores, 1, name="predictions")
+            self.pred = tf.argmax(scores, 1)
         # ================ Loss and Accuracy ================
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss"):
-            losses = tf.nn.softmax_cross_entropy_with_logits(scores, self.input_y)
+            losses = tf.nn.softmax_cross_entropy_with_logits(labels=self.input_y, logits=scores)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
         # Accuracy
         with tf.name_scope("accuracy"):
             correct_predictions = tf.equal(predictions, tf.argmax(self.input_y, 1))
+            self.real = tf.argmax(self.input_y, 1)
             self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")

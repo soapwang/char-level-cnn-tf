@@ -1,13 +1,14 @@
 # based on ideas from https://github.com/dennybritz/cnn-text-classification-tf
 
 import numpy as np
+import codecs
 import json
 
 
 def load_yelp(alphabet):
     examples = []
     labels = []
-    with open('./yelp-review-dataset/yelp_academic_dataset_review.json') as f:
+    with codecs.open('./yelp_review_700K.json', 'r', 'utf-8') as f:
         i = 0
         for line in f:
             review = json.loads(line)
@@ -17,9 +18,11 @@ def load_yelp(alphabet):
                 text_end_extracted = extract_end(list(text.lower()))
                 padded = pad_sentence(text_end_extracted)
                 text_int8_repr = string_to_int8_conversion(padded, alphabet)
+                #negative=[1,0]
                 if stars == 1 or stars == 2:
                     labels.append([1, 0])
                     examples.append(text_int8_repr)
+                #positive=[0,1]
                 elif stars == 4 or stars == 5:
                     labels.append([0, 1])
                     examples.append(text_int8_repr)
@@ -27,7 +30,35 @@ def load_yelp(alphabet):
                 if i % 10000 == 0:
                     print("Non-neutral instances processed: " + str(i))
     return examples, labels
+    
+def load_spam_data(alphabet):
+    contents = []
+    labels = []
+    with codecs.open('./ham_merged.txt', 'r', 'utf-8') as f1:
+        i = 0;
+        for line in f1:
+            text_start_extracted = extract_start(list(line.lower()))
+            padded = pad_sentence(text_start_extracted)
+            text_int8_repr = string_to_int8_conversion(padded, alphabet)
+            contents.append(text_int8_repr)
+            labels.append([0,1])
+            
+    with codecs.open('./spam_merged.txt', 'r', 'utf-8') as f2:
+            for line in f2:
+                text_start_extracted = extract_start(list(line.lower()))
+                padded = pad_sentence(text_start_extracted)
+                text_int8_repr = string_to_int8_conversion(padded, alphabet)
+                contents.append(text_int8_repr)
+                #spam=[1,0]
+                labels.append([1,0])
 
+    return contents, labels
+
+
+def extract_start(char_seq):
+    if len(char_seq) > 1014:
+        char_seq = char_seq[:1014]
+    return char_seq
 
 def extract_end(char_seq):
     if len(char_seq) > 1014:
@@ -48,7 +79,8 @@ def string_to_int8_conversion(char_seq, alphabet):
 
 
 def get_batched_one_hot(char_seqs_indices, labels, start_index, end_index):
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
+    alphabet = r"abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:\"/_@#$%>()[]{}*~"
+    #alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
     x_batch = char_seqs_indices[start_index:end_index]
     y_batch = labels[start_index:end_index]
     x_batch_one_hot = np.zeros(shape=[len(x_batch), len(alphabet), len(x_batch[0]), 1])
@@ -61,8 +93,12 @@ def get_batched_one_hot(char_seqs_indices, labels, start_index, end_index):
 
 def load_data():
     # TODO Add the new line character later for the yelp'cause it's a multi-line review
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
-    examples, labels = load_yelp(alphabet)
+    #alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
+    #examples, labels = load_yelp(alphabet)
+    
+    alphabet = r"abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:\"/_@#$%>()[]{}*~"
+    examples, labels = load_spam_data(alphabet)
+    
     x = np.array(examples, dtype=np.int8)
     y = np.array(labels, dtype=np.int8)
     print("x_char_seq_ind=" + str(x.shape))

@@ -19,8 +19,8 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularizaion lambda (default: 0
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 128, "Batch Size (default: 128)")
 tf.flags.DEFINE_integer("num_epochs", 50, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 5000, "Evaluate model on dev set after this many steps (default: 100)")
-tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_every", 200, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("checkpoint_every", 5000, "Save model after this many steps (default: 100)")
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
 tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
@@ -45,11 +45,11 @@ shuffle_indices = np.random.permutation(np.arange(len(y)))
 x_shuffled = x[shuffle_indices]
 y_shuffled = y[shuffle_indices]
 # Split train/test set
-n_dev_samples = 200000
+n_dev_samples = 15000
 # TODO: Create a fuckin' correct cross validation procedure
 x_train, x_dev = x_shuffled[:-n_dev_samples], x_shuffled[-n_dev_samples:]
 y_train, y_dev = y_shuffled[:-n_dev_samples], y_shuffled[-n_dev_samples:]
-print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
+print("Train/Test split: {:d}/{:d}".format(len(y_train), len(y_dev)))
 
 
 # Training
@@ -70,6 +70,7 @@ with tf.Graph().as_default():
         train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
         # Keep track of gradient values and sparsity (optional)
+        '''
         grad_summaries = []
         for g, v in grads_and_vars:
             if g is not None:
@@ -78,16 +79,18 @@ with tf.Graph().as_default():
                 grad_summaries.append(grad_hist_summary)
                 grad_summaries.append(sparsity_summary)
         grad_summaries_merged = tf.merge_summary(grad_summaries)
-
+        '''
         # Output directory for models and summaries
         timestamp = str(int(time.time()))
         out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
         print("Writing to {}\n".format(out_dir))
 
         # Summaries for loss and accuracy
+        '''
         loss_summary = tf.scalar_summary("loss", cnn.loss)
         acc_summary = tf.scalar_summary("accuracy", cnn.accuracy)
-
+  
+        
         # Train Summaries
         train_summary_op = tf.merge_summary([loss_summary, acc_summary, grad_summaries_merged])
         train_summary_dir = os.path.join(out_dir, "summaries", "train")
@@ -97,13 +100,13 @@ with tf.Graph().as_default():
         dev_summary_op = tf.merge_summary([loss_summary, acc_summary])
         dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
         dev_summary_writer = tf.train.SummaryWriter(dev_summary_dir, sess.graph)
-
+        '''
         # Checkpoint directory. Tensorflow assumes this directory already exists so we need to create it
         checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
         checkpoint_prefix = os.path.join(checkpoint_dir, "model")
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-        saver = tf.train.Saver(tf.all_variables())
+        saver = tf.train.Saver(tf.global_variables())
 
         # Initialize all variables
         sess.run(tf.initialize_all_variables())
@@ -117,41 +120,72 @@ with tf.Graph().as_default():
               cnn.input_y: y_batch,
               cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
             }
-            _, step, summaries, loss, accuracy = sess.run(
-                [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+            _, step, loss, accuracy = sess.run(
+                [train_op, global_step, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
-            train_summary_writer.add_summary(summaries, step)
+            if step % 50 == 0:
+                print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            #train_summary_writer.add_summary(summaries, step)
 
         def dev_step(x_batch, y_batch, writer=None):
             """
             Evaluates model on a dev set
             """
             dev_size = len(x_batch)
-            max_batch_size = 500
-            num_batches = dev_size/max_batch_size
+            max_batch_size = 1000
+            num_batches = int(dev_size/max_batch_size)
             acc = []
             losses = []
-            print("Number of batches in dev set is " + str(num_batches))
+            print("Number of batches in test set is " + str(num_batches))
             for i in range(num_batches):
+                tp = 0
+                tn = 0
+                fp = 0
+                fn = 0         
+            
                 x_batch_dev, y_batch_dev = preprocessing.get_batched_one_hot(
                     x_batch, y_batch, i * max_batch_size, (i + 1) * max_batch_size)
-                feed_dict = {
+                fd = {
                   cnn.input_x: x_batch_dev,
                   cnn.input_y: y_batch_dev,
                   cnn.dropout_keep_prob: 1.0
                 }
-                step, summaries, loss, accuracy = sess.run(
-                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
-                    feed_dict)
+                
+                step, loss, accuracy, predicted, ground_truth = sess.run(
+                    [global_step, cnn.loss, cnn.accuracy, cnn.pred, cnn.real],
+                    fd)
+                    
+                #metrics of class "[1, 0]"
+                for j in range(1000):
+                    if predicted[j] == 0 and ground_truth[j] == 0:
+                        tp += 1
+                    elif not predicted[j] ==0 and not ground_truth[j] == 0:
+                        tn += 1
+                    elif predicted[j] == 0 and not ground_truth[j] == 0:
+                        fp += 1
+                    else:
+                        fn += 1
+                        
+                precision = 0
+                recall = 0
+                if (fp+fn+tp+tn) < 1000:
+                    print("An error occured, total =",fp+fn+tp+tn)
+                else:
+                    precision = tp/(tp+fp)
+                    recall = tp/(tp+fn)
+                    
                 acc.append(accuracy)
                 losses.append(loss)
                 time_str = datetime.datetime.now().isoformat()
-                print("batch " + str(i + 1) + " in dev >>" +
-                      " {}: loss {:g}, acc {:g}".format(time_str, loss, accuracy))
+                #print("TP:%d, TN:%d, FP:%d, FN:%d" % (tp, tn, fp, fn))
+                print("batch " + str(i + 1) + " in test >>" +
+                      " {}: loss {:g}, acc {:g}, precision {:g}, recall {:g}\n".format(time_str, loss, accuracy, precision, recall))
+                      
+                '''
                 if writer:
                     writer.add_summary(summaries, step)
+                '''   
             print("\nMean accuracy=" + str(sum(acc)/len(acc)))
             print("Mean loss=" + str(sum(losses)/len(losses)))
 
@@ -165,7 +199,7 @@ with tf.Graph().as_default():
             current_step = tf.train.global_step(sess, global_step)
             if current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                dev_step(x_dev, y_dev)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
