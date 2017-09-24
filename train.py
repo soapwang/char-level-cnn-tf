@@ -8,6 +8,7 @@ import time
 import datetime
 import preprocessing
 from model import CharCNN
+from model_w2v import WordCNN
 
 # Parameters
 # ==================================================
@@ -19,7 +20,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularizaion lambda (default: 0
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 128, "Batch Size (default: 128)")
 tf.flags.DEFINE_integer("num_epochs", 50, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 200, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_every", 1000, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 5000, "Save model after this many steps (default: 100)")
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
@@ -38,7 +39,8 @@ print("")
 
 # Load data
 print("Loading data...")
-x, y = preprocessing.load_data()
+#x, y = preprocessing.load_data()
+x, y = preprocessing.load_data_w2v()
 # Randomly shuffle data
 np.random.seed(10)
 shuffle_indices = np.random.permutation(np.arange(len(y)))
@@ -46,7 +48,7 @@ x_shuffled = x[shuffle_indices]
 y_shuffled = y[shuffle_indices]
 # Split train/test set
 n_dev_samples = 15000
-# TODO: Create a fuckin' correct cross validation procedure
+
 x_train, x_dev = x_shuffled[:-n_dev_samples], x_shuffled[-n_dev_samples:]
 y_train, y_dev = y_shuffled[:-n_dev_samples], y_shuffled[-n_dev_samples:]
 print("Train/Test split: {:d}/{:d}".format(len(y_train), len(y_dev)))
@@ -61,8 +63,8 @@ with tf.Graph().as_default():
       log_device_placement=FLAGS.log_device_placement)
     sess = tf.Session(config=session_conf)
     with sess.as_default():
-        cnn = CharCNN()
-
+        #cnn = CharCNN()
+        cnn = WordCNN()
         # Define Training procedure
         global_step = tf.Variable(0, name="global_step", trainable=False)
         optimizer = tf.train.AdamOptimizer(1e-3)
@@ -124,7 +126,7 @@ with tf.Graph().as_default():
                 [train_op, global_step, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            if step % 50 == 0:
+            if step % 100 == 0:
                 print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
             #train_summary_writer.add_summary(summaries, step)
 
@@ -137,15 +139,26 @@ with tf.Graph().as_default():
             num_batches = int(dev_size/max_batch_size)
             acc = []
             losses = []
+            p = []
+            r = []
             print("Number of batches in test set is " + str(num_batches))
             for i in range(num_batches):
                 tp = 0
                 tn = 0
                 fp = 0
                 fn = 0         
-            
+                #for char-level cnn
+                '''
                 x_batch_dev, y_batch_dev = preprocessing.get_batched_one_hot(
                     x_batch, y_batch, i * max_batch_size, (i + 1) * max_batch_size)
+                '''
+                #for word vector cnn
+                start =  i * max_batch_size
+                end = min((i + 1) * max_batch_size, len(x_batch))
+                x_batch_dev = x_batch[start:end]
+                x_batch_dev = np.reshape(x_batch_dev, [len(x_batch_dev), 128, 64, 1])
+                y_batch_dev = y_batch[start:end]
+
                 fd = {
                   cnn.input_x: x_batch_dev,
                   cnn.input_y: y_batch_dev,
@@ -172,11 +185,14 @@ with tf.Graph().as_default():
                 if (fp+fn+tp+tn) < 1000:
                     print("An error occured, total =",fp+fn+tp+tn)
                 else:
-                    precision = tp/(tp+fp)
-                    recall = tp/(tp+fn)
-                    
+                    pass
+                    #precision = tp/(tp+fp)
+                    #recall = tp/(tp+fn)
+
                 acc.append(accuracy)
                 losses.append(loss)
+                p.append(precision)
+                r.append(recall)
                 time_str = datetime.datetime.now().isoformat()
                 #print("TP:%d, TN:%d, FP:%d, FN:%d" % (tp, tn, fp, fn))
                 print("batch " + str(i + 1) + " in test >>" +
@@ -187,11 +203,13 @@ with tf.Graph().as_default():
                     writer.add_summary(summaries, step)
                 '''   
             print("\nMean accuracy=" + str(sum(acc)/len(acc)))
-            print("Mean loss=" + str(sum(losses)/len(losses)))
+            #print("Mean loss=" + str(sum(losses)/len(losses)))
+            print("\nMean precision=" + str(sum(p)/len(p)))
+            print("\nMean recall=" + str(sum(r)/len(r)))
 
 
         # Generate batches in one-hot-encoding format
-        batches = preprocessing.batch_iter(x_train, y_train, FLAGS.batch_size, FLAGS.num_epochs)
+        batches = preprocessing.batch_iter_w2v(x_train, y_train, FLAGS.batch_size, FLAGS.num_epochs)
         # Training loop. For each batch...
         for batch in batches:
             x_batch, y_batch = zip(*batch)

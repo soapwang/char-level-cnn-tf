@@ -7,7 +7,7 @@ import jieba
 
 CHINESE_SPAM = ''
 CHINESE_HAM = ''
-FINAL_EMBEDDINGS = ''
+FINAL_EMBEDDINGS = './data_spam/final_embeddings.txt'
 YELP_700K = './yelp_review_700K.json'
 
 def load_yelp(alphabet):
@@ -60,12 +60,15 @@ def load_spam_data(alphabet):
     return contents, labels
     
 def load_spam_w2v(lookup_table, feature_length):
+    from zhon.hanzi import punctuation
+    import re
     contents = []
     labels = []
-
-    with codecs.open('./data/ham_merged.txt', 'r', 'utf-8') as f1:
+    count = 0;
+    with codecs.open('./data_spam/ham_merged.txt', 'r', 'utf-8') as f1:
         for line in f1:
             features = []
+            line = re.sub(r"[%s]+" % punctuation, "", line)
             seg_list = jieba.cut(line, cut_all=False)
             for item in seg_list:
                 if item in lookup_table:
@@ -82,10 +85,14 @@ def load_spam_w2v(lookup_table, feature_length):
             arr = np.asarray(result, dtype=np.float32).transpose()
             contents.append(arr)
             labels.append([0, 1])
+            count += 1
+            if count % 2000 == 0:
+                print("%d lines of data loaded..." % len(labels))
             
-    with codecs.open('./data/spam_merged.txt', 'r', 'utf-8') as f2:
+    with codecs.open('./data_spam/spam_merged.txt', 'r', 'utf-8') as f2:
             for line in f2:
                 features = []
+                line = re.sub(r"[%s]+" % punctuation, "", line)
                 seg_list = jieba.cut(line, cut_all=False)
                 for item in seg_list:
                     if item in lookup_table:
@@ -102,6 +109,10 @@ def load_spam_w2v(lookup_table, feature_length):
                 arr = np.asarray(result, dtype=np.float32).transpose()
                 contents.append(arr)
                 labels.append([1, 0])
+                count += 1
+                if count % 2000 == 0:
+                    print("%d lines of data loaded..." % len(labels))
+
     return contents, labels
 
 def build_lookup_table(filename):
@@ -199,5 +210,32 @@ def batch_iter(x, y, batch_size, num_epochs, shuffle=True):
             start_index = batch_num * batch_size
             end_index = min((batch_num + 1) * batch_size, data_size)
             x_batch, y_batch = get_batched_one_hot(x_shuffled, y_shuffled, start_index, end_index)
+            batch = list(zip(x_batch, y_batch))
+            yield batch
+
+def batch_iter_w2v(x, y, batch_size, num_epochs, shuffle=True):
+    """
+    Generates a batch iterator for a dataset.
+    """
+    # data = np.array(data)
+    data_size = len(x)
+    num_batches_per_epoch = int(data_size/batch_size) + 1
+    for epoch in range(num_epochs):
+        print("In epoch >> " + str(epoch + 1))
+        print("num batches per epoch is: " + str(num_batches_per_epoch))
+        # Shuffle the data at each epoch
+        if shuffle:
+            shuffle_indices = np.random.permutation(np.arange(data_size))
+            x_shuffled = x[shuffle_indices]
+            y_shuffled = y[shuffle_indices]
+        else:
+            x_shuffled = x
+            y_shuffled = y
+        for batch_num in range(num_batches_per_epoch):
+            start_index = batch_num * batch_size
+            end_index = min((batch_num + 1) * batch_size, data_size)
+            x_batch = x_shuffled[start_index:end_index]
+            x_batch = np.reshape(x_batch, [len(x_batch), 128, 64, 1])
+            y_batch = y_shuffled[start_index:end_index]
             batch = list(zip(x_batch, y_batch))
             yield batch

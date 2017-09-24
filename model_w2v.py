@@ -88,7 +88,7 @@ class WordCNN(object):
                 name="pool6")
 
         # ================ Layer 7 ================
-        num_features_total = 10* num_filters_per_size
+        num_features_total = 9 * num_filters_per_size
         h_pool_flat = tf.reshape(pooled, [-1, num_features_total])
 
         # Add dropout
