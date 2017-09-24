@@ -3,27 +3,32 @@
 import numpy as np
 import codecs
 import json
+import jieba
 
+CHINESE_SPAM = ''
+CHINESE_HAM = ''
+FINAL_EMBEDDINGS = ''
+YELP_700K = './yelp_review_700K.json'
 
 def load_yelp(alphabet):
     examples = []
     labels = []
-    with codecs.open('./yelp_review_700K.json', 'r', 'utf-8') as f:
+    with codecs.open(YELP_700K, 'r', 'utf-8') as f:
         i = 0
         for line in f:
             review = json.loads(line)
             stars = review["stars"]
             text = review["text"]
-            if stars != 3:
+            if stars != 3 and stars != 2 and stars != 4:
                 text_end_extracted = extract_end(list(text.lower()))
                 padded = pad_sentence(text_end_extracted)
                 text_int8_repr = string_to_int8_conversion(padded, alphabet)
                 #negative=[1,0]
-                if stars == 1 or stars == 2:
+                if stars == 1:
                     labels.append([1, 0])
                     examples.append(text_int8_repr)
                 #positive=[0,1]
-                elif stars == 4 or stars == 5:
+                elif stars == 5:
                     labels.append([0, 1])
                     examples.append(text_int8_repr)
                 i += 1
@@ -34,26 +39,82 @@ def load_yelp(alphabet):
 def load_spam_data(alphabet):
     contents = []
     labels = []
-    with codecs.open('./ham_merged.txt', 'r', 'utf-8') as f1:
+    with codecs.open(CHINESE_HAM, 'r', 'utf-8') as f1:
         i = 0;
         for line in f1:
             text_start_extracted = extract_start(list(line.lower()))
             padded = pad_sentence(text_start_extracted)
             text_int8_repr = string_to_int8_conversion(padded, alphabet)
             contents.append(text_int8_repr)
-            labels.append([0,1])
+            labels.append([0, 1])
             
-    with codecs.open('./spam_merged.txt', 'r', 'utf-8') as f2:
+    with codecs.open(CHINESE_SPAM, 'r', 'utf-8') as f2:
             for line in f2:
                 text_start_extracted = extract_start(list(line.lower()))
                 padded = pad_sentence(text_start_extracted)
                 text_int8_repr = string_to_int8_conversion(padded, alphabet)
                 contents.append(text_int8_repr)
                 #spam=[1,0]
-                labels.append([1,0])
+                labels.append([1, 0])
 
     return contents, labels
+    
+def load_spam_w2v(lookup_table, feature_length):
+    contents = []
+    labels = []
 
+    with codecs.open('./data/ham_merged.txt', 'r', 'utf-8') as f1:
+        for line in f1:
+            features = []
+            seg_list = jieba.cut(line, cut_all=False)
+            for item in seg_list:
+                if item in lookup_table:
+                    features.append(lookup_table[item])
+                else:
+                    features.append(lookup_table['UNK'])
+
+            if len(features) >= feature_length:
+                result = features[:feature_length]
+            else:
+                num_padding = feature_length - len(features)
+                result = features + [lookup_table['UNK']] * num_padding
+
+            arr = np.asarray(result, dtype=np.float32).transpose()
+            contents.append(arr)
+            labels.append([0, 1])
+            
+    with codecs.open('./data/spam_merged.txt', 'r', 'utf-8') as f2:
+            for line in f2:
+                features = []
+                seg_list = jieba.cut(line, cut_all=False)
+                for item in seg_list:
+                    if item in lookup_table:
+                        features.append(lookup_table[item])
+                    else:
+                        features.append(lookup_table['UNK'])
+
+                if len(features) >= feature_length:
+                    result = features[:feature_length]
+                else:
+                    num_padding = feature_length - len(features)
+                    result = features + [lookup_table['UNK']] * num_padding
+
+                arr = np.asarray(result, dtype=np.float32).transpose()
+                contents.append(arr)
+                labels.append([1, 0])
+    return contents, labels
+
+def build_lookup_table(filename):
+    lookup_table = dict()
+    with codecs.open(filename, "r", "utf-8") as f:
+        lines = f.readlines()
+        for line in lines:
+            line = line.strip('\n')
+            split = line.split(",")
+            key = split[0]
+            value = split[1:]
+            lookup_table[key] = value
+    return lookup_table
 
 def extract_start(char_seq):
     if len(char_seq) > 1014:
@@ -79,8 +140,8 @@ def string_to_int8_conversion(char_seq, alphabet):
 
 
 def get_batched_one_hot(char_seqs_indices, labels, start_index, end_index):
-    alphabet = r"abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:\"/_@#$%>()[]{}*~"
-    #alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
+    #alphabet = r"abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:\"/_@#$%>()[]{}*~"
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
     x_batch = char_seqs_indices[start_index:end_index]
     y_batch = labels[start_index:end_index]
     x_batch_one_hot = np.zeros(shape=[len(x_batch), len(alphabet), len(x_batch[0]), 1])
@@ -93,15 +154,25 @@ def get_batched_one_hot(char_seqs_indices, labels, start_index, end_index):
 
 def load_data():
     # TODO Add the new line character later for the yelp'cause it's a multi-line review
-    #alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
-    #examples, labels = load_yelp(alphabet)
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}\n"
+    examples, labels = load_yelp(alphabet)
     
-    alphabet = r"abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:\"/_@#$%>()[]{}*~"
-    examples, labels = load_spam_data(alphabet)
+    #alphabet = r"abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:\"/_@#$%>()[]{}*~"
+    #examples, labels = load_spam_data(alphabet)
     
     x = np.array(examples, dtype=np.int8)
     y = np.array(labels, dtype=np.int8)
     print("x_char_seq_ind=" + str(x.shape))
+    print("y shape=" + str(y.shape))
+    return [x, y]
+
+def load_data_w2v():
+    lookup_table = build_lookup_table(FINAL_EMBEDDINGS)
+    examples, labels = load_spam_w2v(lookup_table, 64)
+
+    x = np.asarray(examples, dtype=np.float32)
+    y = np.asarray(labels, dtype=np.int8)
+    print("x shape="+str(x.shape))
     print("y shape=" + str(y.shape))
     return [x, y]
 
