@@ -4,10 +4,11 @@ import numpy as np
 import codecs
 import json
 import jieba
+import string
 
 CHINESE_SPAM = ''
 CHINESE_HAM = ''
-FINAL_EMBEDDINGS = './data_spam/final_embeddings.txt'
+FINAL_EMBEDDINGS = './data_yelp/yelp_embeddings_300d.txt'
 YELP_700K = './yelp_review_700K.json'
 
 def load_yelp(alphabet):
@@ -19,22 +20,69 @@ def load_yelp(alphabet):
             review = json.loads(line)
             stars = review["stars"]
             text = review["text"]
-            if stars != 3 and stars != 2 and stars != 4:
+            if stars != 3:
                 text_end_extracted = extract_end(list(text.lower()))
                 padded = pad_sentence(text_end_extracted)
                 text_int8_repr = string_to_int8_conversion(padded, alphabet)
                 #negative=[1,0]
-                if stars == 1:
+                if stars == 1 or stars == 2:
                     labels.append([1, 0])
                     examples.append(text_int8_repr)
                 #positive=[0,1]
-                elif stars == 5:
+                elif stars == 5 or stars == 4:
                     labels.append([0, 1])
                     examples.append(text_int8_repr)
                 i += 1
                 if i % 10000 == 0:
                     print("Non-neutral instances processed: " + str(i))
+                if i >= 330000:
+                    break
     return examples, labels
+
+#for yelp data w2v model
+def load_yelp_w2v(lookup_table, feature_length):
+    contents = []
+    labels =[]
+    import re
+    with codecs.open(YELP_700K, 'r', 'utf-8') as f:
+        i = 0;
+        for line in f:
+            features = []
+            review = json.loads(line)
+            stars = review["stars"]
+            text = review["text"]
+            if stars != 3:
+
+                text = text.lower().replace("\n", " ")
+                spaced = re.sub(r"[%s]+" % string.punctuation, " ", text)
+                seg_list = spaced.split()
+
+                for item in seg_list:
+                    if item in lookup_table:
+                        features.append(lookup_table[item])
+                    else:
+                        features.append(lookup_table['UNK'])
+
+                if len(features) >= feature_length:
+                    result = features[:feature_length]
+                else:
+                    num_padding = feature_length - len(features)
+                    result = features + [lookup_table['UNK']] * num_padding
+
+                if stars == 1 or stars == 2:
+                    labels.append([1, 0])
+                elif stars == 5 or stars == 4:
+                    labels.append([0, 1])
+
+                arr = np.asarray(result, dtype=np.float32).transpose()
+                contents.append(arr)
+                i += 1
+
+                if i % 5000 == 0:
+                    print("%d non-neutral instances loaded..." % len(labels))
+                if i >= 50000:
+                    break
+    return contents, labels
     
 def load_spam_data(alphabet):
     contents = []
@@ -58,7 +106,8 @@ def load_spam_data(alphabet):
                 labels.append([1, 0])
 
     return contents, labels
-    
+
+#for chinese spam w2v model
 def load_spam_w2v(lookup_table, feature_length):
     from zhon.hanzi import punctuation
     import re
@@ -179,7 +228,9 @@ def load_data():
 
 def load_data_w2v():
     lookup_table = build_lookup_table(FINAL_EMBEDDINGS)
-    examples, labels = load_spam_w2v(lookup_table, 64)
+    examples, labels = load_yelp_w2v(lookup_table, 64)
+    #reduce memory
+    del lookup_table
 
     x = np.asarray(examples, dtype=np.float32)
     y = np.asarray(labels, dtype=np.int8)
@@ -213,7 +264,7 @@ def batch_iter(x, y, batch_size, num_epochs, shuffle=True):
             batch = list(zip(x_batch, y_batch))
             yield batch
 
-def batch_iter_w2v(x, y, batch_size, num_epochs, shuffle=True):
+def batch_iter_w2v(x, y, batch_size, num_epochs, w2v_dim, shuffle=True):
     """
     Generates a batch iterator for a dataset.
     """
@@ -235,7 +286,7 @@ def batch_iter_w2v(x, y, batch_size, num_epochs, shuffle=True):
             start_index = batch_num * batch_size
             end_index = min((batch_num + 1) * batch_size, data_size)
             x_batch = x_shuffled[start_index:end_index]
-            x_batch = np.reshape(x_batch, [len(x_batch), 128, 64, 1])
+            x_batch = np.reshape(x_batch, [len(x_batch), w2v_dim, 64, 1])
             y_batch = y_shuffled[start_index:end_index]
             batch = list(zip(x_batch, y_batch))
             yield batch

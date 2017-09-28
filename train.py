@@ -18,13 +18,15 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularizaion lambda (default: 0.0)")
 
 # Training parameters
+tf.flags.DEFINE_integer("w2v_dim", 300, "Word vector dimensions (default: 128)")
 tf.flags.DEFINE_integer("batch_size", 128, "Batch Size (default: 128)")
 tf.flags.DEFINE_integer("num_epochs", 50, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 1000, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_every", 1565, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 5000, "Save model after this many steps (default: 100)")
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
 tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
+tf.flags.DEFINE_boolean("char_cnn", False, "choose char cnn or word cnn")
 
 FLAGS = tf.flags.FLAGS
 FLAGS._parse_flags()
@@ -46,11 +48,14 @@ np.random.seed(10)
 shuffle_indices = np.random.permutation(np.arange(len(y)))
 x_shuffled = x[shuffle_indices]
 y_shuffled = y[shuffle_indices]
+del x
 # Split train/test set
-n_dev_samples = 15000
+n_dev_samples = 10000
 
 x_train, x_dev = x_shuffled[:-n_dev_samples], x_shuffled[-n_dev_samples:]
+del x_shuffled
 y_train, y_dev = y_shuffled[:-n_dev_samples], y_shuffled[-n_dev_samples:]
+
 print("Train/Test split: {:d}/{:d}".format(len(y_train), len(y_dev)))
 
 
@@ -63,8 +68,10 @@ with tf.Graph().as_default():
       log_device_placement=FLAGS.log_device_placement)
     sess = tf.Session(config=session_conf)
     with sess.as_default():
-        #cnn = CharCNN()
-        cnn = WordCNN()
+        if FLAGS.char_cnn:
+            cnn = CharCNN()
+        else:
+            cnn = WordCNN()
         # Define Training procedure
         global_step = tf.Variable(0, name="global_step", trainable=False)
         optimizer = tf.train.AdamOptimizer(1e-3)
@@ -146,18 +153,18 @@ with tf.Graph().as_default():
                 tp = 0
                 tn = 0
                 fp = 0
-                fn = 0         
-                #for char-level cnn
-                '''
-                x_batch_dev, y_batch_dev = preprocessing.get_batched_one_hot(
-                    x_batch, y_batch, i * max_batch_size, (i + 1) * max_batch_size)
-                '''
-                #for word vector cnn
-                start =  i * max_batch_size
-                end = min((i + 1) * max_batch_size, len(x_batch))
-                x_batch_dev = x_batch[start:end]
-                x_batch_dev = np.reshape(x_batch_dev, [len(x_batch_dev), 128, 64, 1])
-                y_batch_dev = y_batch[start:end]
+                fn = 0
+                if FLAGS.char_cnn:
+                    #for char-level cnn
+                    x_batch_dev, y_batch_dev = preprocessing.get_batched_one_hot(
+                        x_batch, y_batch, i * max_batch_size, (i + 1) * max_batch_size)
+                else:
+                    #for word vector cnn
+                    start =  i * max_batch_size
+                    end = min((i + 1) * max_batch_size, len(x_batch))
+                    x_batch_dev = x_batch[start:end]
+                    x_batch_dev = np.reshape(x_batch_dev, [len(x_batch_dev), FLAGS.w2v_dim, 64, 1])
+                    y_batch_dev = y_batch[start:end]
 
                 fd = {
                   cnn.input_x: x_batch_dev,
@@ -209,7 +216,7 @@ with tf.Graph().as_default():
 
 
         # Generate batches in one-hot-encoding format
-        batches = preprocessing.batch_iter_w2v(x_train, y_train, FLAGS.batch_size, FLAGS.num_epochs)
+        batches = preprocessing.batch_iter_w2v(x_train, y_train, FLAGS.batch_size, FLAGS.num_epochs, FLAGS.w2v_dim)
         # Training loop. For each batch...
         for batch in batches:
             x_batch, y_batch = zip(*batch)
