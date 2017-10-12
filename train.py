@@ -18,7 +18,7 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularizaion lambda (default: 0.0)")
 
 # Training parameters
-tf.flags.DEFINE_integer("w2v_dim", 300, "Word vector dimensions (default: 128)")
+tf.flags.DEFINE_integer("w2v_dim", 128, "Word vector dimensions (default: 128)")
 tf.flags.DEFINE_integer("batch_size", 128, "Batch Size (default: 128)")
 tf.flags.DEFINE_integer("num_epochs", 50, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 1565, "Evaluate model on dev set after this many steps (default: 100)")
@@ -50,14 +50,18 @@ x_shuffled = x[shuffle_indices]
 y_shuffled = y[shuffle_indices]
 del x
 # Split train/test set
-n_dev_samples = 10000
+num_instances = len(x_shuffled)
+n_dev_samples = int(num_instances*0.1)
+#n_dev_samples = 16000
 
 x_train, x_dev = x_shuffled[:-n_dev_samples], x_shuffled[-n_dev_samples:]
 del x_shuffled
 y_train, y_dev = y_shuffled[:-n_dev_samples], y_shuffled[-n_dev_samples:]
 
 print("Train/Test split: {:d}/{:d}".format(len(y_train), len(y_dev)))
-
+batches_per_epoch = int(len(x_train)/FLAGS.batch_size) + 1
+evaluate_every = batches_per_epoch * 5
+print("Evaluate every 5 epochs/%d steps" % evaluate_every)
 
 # Training
 # ==================================================
@@ -118,7 +122,7 @@ with tf.Graph().as_default():
         saver = tf.train.Saver(tf.global_variables())
 
         # Initialize all variables
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
 
         def train_step(x_batch, y_batch):
             """
@@ -222,7 +226,7 @@ with tf.Graph().as_default():
             x_batch, y_batch = zip(*batch)
             train_step(x_batch, y_batch)
             current_step = tf.train.global_step(sess, global_step)
-            if current_step % FLAGS.evaluate_every == 0:
+            if current_step % evaluate_every == 0:
                 print("\nEvaluation:")
                 dev_step(x_dev, y_dev)
                 print("")

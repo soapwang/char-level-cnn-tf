@@ -8,7 +8,7 @@ import string
 
 CHINESE_SPAM = ''
 CHINESE_HAM = ''
-FINAL_EMBEDDINGS = './data_yelp/yelp_embeddings_300d.txt'
+FINAL_EMBEDDINGS = './data_yelp/yelp_embeddings_128d.txt'
 YELP_700K = './yelp_review_700K.json'
 
 def load_yelp(alphabet):
@@ -44,44 +44,47 @@ def load_yelp_w2v(lookup_table, feature_length):
     contents = []
     labels =[]
     import re
+    from random import randint
     with codecs.open(YELP_700K, 'r', 'utf-8') as f:
         i = 0;
         for line in f:
-            features = []
-            review = json.loads(line)
-            stars = review["stars"]
-            text = review["text"]
-            if stars != 3:
+            rd = randint(0, 99)
+            if rd > 80:
+                features = []
+                review = json.loads(line)
+                stars = review["stars"]
+                text = review["text"]
+                if stars != 3:
 
-                text = text.lower().replace("\n", " ")
-                spaced = re.sub(r"[%s]+" % string.punctuation, " ", text)
-                seg_list = spaced.split()
+                    text = text.lower().replace("\n", " ")
+                    spaced = re.sub(r"[%s]+" % string.punctuation, " ", text)
+                    seg_list = spaced.split()
 
-                for item in seg_list:
-                    if item in lookup_table:
-                        features.append(lookup_table[item])
+                    for item in seg_list:
+                        if item in lookup_table:
+                            features.append(lookup_table[item])
+                        else:
+                            features.append(lookup_table['UNK'])
+
+                    if len(features) >= feature_length:
+                        result = features[:feature_length]
                     else:
-                        features.append(lookup_table['UNK'])
+                        num_padding = feature_length - len(features)
+                        result = features + [lookup_table['UNK']] * num_padding
 
-                if len(features) >= feature_length:
-                    result = features[:feature_length]
-                else:
-                    num_padding = feature_length - len(features)
-                    result = features + [lookup_table['UNK']] * num_padding
+                    if stars == 1 or stars == 2:
+                        labels.append([1, 0])
+                    elif stars == 5 or stars == 4:
+                        labels.append([0, 1])
 
-                if stars == 1 or stars == 2:
-                    labels.append([1, 0])
-                elif stars == 5 or stars == 4:
-                    labels.append([0, 1])
+                    arr = np.asarray(result, dtype=np.float32).transpose()
+                    contents.append(arr)
+                    i += 1
 
-                arr = np.asarray(result, dtype=np.float32).transpose()
-                contents.append(arr)
-                i += 1
-
-                if i % 5000 == 0:
-                    print("%d non-neutral instances loaded..." % len(labels))
-                if i >= 50000:
-                    break
+                    if len(labels) % 5000 == 0:
+                        print("%d non-neutral instances loaded..." % len(labels))
+                    if len(labels) >= 50000:
+                        break
     return contents, labels
     
 def load_spam_data(alphabet):
@@ -273,7 +276,7 @@ def batch_iter_w2v(x, y, batch_size, num_epochs, w2v_dim, shuffle=True):
     num_batches_per_epoch = int(data_size/batch_size) + 1
     for epoch in range(num_epochs):
         print("In epoch >> " + str(epoch + 1))
-        print("num batches per epoch is: " + str(num_batches_per_epoch))
+        #print("num batches per epoch is: " + str(num_batches_per_epoch))
         # Shuffle the data at each epoch
         if shuffle:
             shuffle_indices = np.random.permutation(np.arange(data_size))

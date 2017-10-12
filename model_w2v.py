@@ -10,7 +10,7 @@ class WordCNN(object):
     """
     #for chinese spam data, num_quantized_chars=60
     def __init__(self, num_classes=2, filter_sizes=(5, 5, 3, 3, 3, 3), num_filters_per_size=256,
-                 l2_reg_lambda=0.0, sequence_max_length=64, dimensions=300):
+                 l2_reg_lambda=0.0, sequence_max_length=64, dimensions=128):
 
         # Placeholders for input, output and dropout
         self.input_x = tf.placeholder(tf.float32, [None, dimensions, sequence_max_length, 1], name="input_x")
