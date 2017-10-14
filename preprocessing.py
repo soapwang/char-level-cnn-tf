@@ -44,12 +44,16 @@ def load_yelp_w2v(lookup_table, feature_length):
     contents = []
     labels =[]
     import re
-    from random import randint
+    #from random import randint
     with codecs.open(YELP_700K, 'r', 'utf-8') as f:
         i = 0;
         for line in f:
-            rd = randint(0, 99)
-            if rd > 80:
+            i += 1
+            if i < 50000:
+                continue
+            fine_grained = True
+            #rd = randint(0, 99)
+            if not fine_grained:
                 features = []
                 review = json.loads(line)
                 stars = review["stars"]
@@ -79,12 +83,53 @@ def load_yelp_w2v(lookup_table, feature_length):
 
                     arr = np.asarray(result, dtype=np.float32).transpose()
                     contents.append(arr)
-                    i += 1
+
 
                     if len(labels) % 5000 == 0:
                         print("%d non-neutral instances loaded..." % len(labels))
                     if len(labels) >= 50000:
                         break
+            else:
+                features = []
+                review = json.loads(line)
+                stars = review["stars"]
+                text = review["text"]
+
+                text = text.lower().replace("\n", " ")
+                spaced = re.sub(r"[%s]+" % string.punctuation, " ", text)
+                seg_list = spaced.split()
+
+                for item in seg_list:
+                    if item in lookup_table:
+                        features.append(lookup_table[item])
+                    else:
+                        features.append(lookup_table['UNK'])
+
+                if len(features) >= feature_length:
+                        result = features[:feature_length]
+                else:
+                    num_padding = feature_length - len(features)
+                    result = features + [lookup_table['UNK']] * num_padding
+
+                if stars == 1:
+                    labels.append([1, 0, 0, 0, 0])
+                elif stars == 2:
+                    labels.append([0, 1, 0, 0, 0])
+                elif stars == 3:
+                    labels.append([0, 0, 1, 0, 0])
+                elif stars == 4:
+                    labels.append([0, 0, 0, 1, 0])
+                else:
+                    labels.append([0, 0, 0, 0, 1])
+
+                arr = np.asarray(result, dtype=np.float32).transpose()
+                contents.append(arr)
+
+                if len(labels) % 5000 == 0:
+                    print("%d instances loaded..." % len(labels))
+                if len(labels) >= 80000:
+                    break
+
     return contents, labels
     
 def load_spam_data(alphabet):
