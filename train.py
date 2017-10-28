@@ -8,7 +8,7 @@ import time
 import datetime
 import preprocessing
 from model import CharCNN
-from model_w2v import WordCNN
+from model_w2v_small import WordCNN
 
 # Parameters
 # ==================================================
@@ -18,7 +18,7 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularizaion lambda (default: 0.0)")
 
 # Training parameters
-tf.flags.DEFINE_integer("w2v_dim", 128, "Word vector dimensions (default: 128)")
+tf.flags.DEFINE_integer("w2v_dim", 100, "Word vector dimensions (default: 128)")
 tf.flags.DEFINE_integer("batch_size", 128, "Batch Size (default: 128)")
 tf.flags.DEFINE_integer("num_epochs", 50, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 1565, "Evaluate model on dev set after this many steps (default: 100)")
@@ -78,7 +78,7 @@ with tf.Graph().as_default():
             cnn = WordCNN()
         # Define Training procedure
         global_step = tf.Variable(0, name="global_step", trainable=False)
-        optimizer = tf.train.AdamOptimizer(1e-3)
+        optimizer = tf.train.AdamOptimizer(1e-4)
         grads_and_vars = optimizer.compute_gradients(cnn.loss)
         train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
@@ -167,7 +167,7 @@ with tf.Graph().as_default():
                     start =  i * max_batch_size
                     end = min((i + 1) * max_batch_size, len(x_batch))
                     x_batch_dev = x_batch[start:end]
-                    x_batch_dev = np.reshape(x_batch_dev, [len(x_batch_dev), FLAGS.w2v_dim, 64, 1])
+                    x_batch_dev = np.reshape(x_batch_dev, [len(x_batch_dev), FLAGS.w2v_dim, 128, 1])
                     y_batch_dev = y_batch[start:end]
 
                 fd = {
@@ -215,8 +215,8 @@ with tf.Graph().as_default():
                 '''   
             print("\nMean accuracy=" + str(sum(acc)/len(acc)))
             #print("Mean loss=" + str(sum(losses)/len(losses)))
-            print("\nMean precision=" + str(sum(p)/len(p)))
-            print("\nMean recall=" + str(sum(r)/len(r)))
+            #print("\nMean precision=" + str(sum(p)/len(p)))
+            #print("\nMean recall=" + str(sum(r)/len(r)))
 
 
         # Generate batches in one-hot-encoding format

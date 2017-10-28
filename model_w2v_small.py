@@ -9,8 +9,8 @@ class WordCNN(object):
     based on the Character-level Convolutional Networks for Text Classification paper.
     """
     #for chinese spam data, num_quantized_chars=60
-    def __init__(self, num_classes=5, filter_sizes=(5, 5, 3, 3, 3, 3), num_filters_per_size=256,
-                 l2_reg_lambda=0.0, sequence_max_length=64, dimensions=128):
+    def __init__(self, num_classes=2, filter_sizes=(5, 5, 3, 3, 3, 3), num_filters_per_size=256,
+                 l2_reg_lambda=0.0, sequence_max_length=128, dimensions=100):
 
         # Placeholders for input, output and dropout
         self.input_x = tf.placeholder(tf.float32, [None, dimensions, sequence_max_length, 1], name="input_x")
@@ -49,10 +49,25 @@ class WordCNN(object):
                 padding='VALID',
                 name="pool2")
 
-
         # ================ Layer 3 ================
-        num_features_total = 13 * num_filters_per_size
-        h_pool_flat = tf.reshape(pooled, [-1, num_features_total])
+        with tf.name_scope("conv-3"):
+            filter_shape = [1, filter_sizes[2], num_filters_per_size, num_filters_per_size]
+            W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
+            b = tf.Variable(tf.constant(0.1, shape=[num_filters_per_size]), name="b")
+            conv = tf.nn.conv2d(pooled, W, strides=[1, 1, 1, 1], padding="VALID", name="conv2")
+            h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+
+            # pooled = tf.nn.max_pool(
+            #     h,
+            #     ksize=[1, 1, 2, 1],
+            #     strides=[1, 1, 2, 1],
+            #     padding='VALID',
+            #     name="pool3")
+
+
+        # ================ Layer 4 ================
+        num_features_total = 27 * num_filters_per_size
+        h_pool_flat = tf.reshape(h, [-1, num_features_total])
 
         # Add dropout
         with tf.name_scope("dropout-1"):
@@ -69,7 +84,7 @@ class WordCNN(object):
 
             fc_1_output = tf.nn.relu(tf.nn.xw_plus_b(drop1, W, b), name="fc-1-out")
 
-        # ================ Layer 4 ================
+        # ================ Layer 5 ================
         # Add dropout
         with tf.name_scope("dropout-2"):
             drop2 = tf.nn.dropout(fc_1_output, self.dropout_keep_prob)
@@ -85,7 +100,7 @@ class WordCNN(object):
 
             fc_2_output = tf.nn.relu(tf.nn.xw_plus_b(drop2, W, b), name="fc-2-out")
 
-        # ================ Layer 5 ================
+        # ================ Layer 6 ================
         # Fully connected layer 3
         with tf.name_scope("fc-3"):
             W = tf.Variable(tf.truncated_normal([1024, num_classes], stddev=0.05), name="W")
